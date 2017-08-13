@@ -1,0 +1,6 @@
+*.json
+!schema.json
+!package.json
+output.csv
+.vscode
+node_modules

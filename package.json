@@ -1,0 +1,16 @@
+{
+  "name": "qos",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "Unify",
+  "license": "Apache 2.0",
+  "dependencies": {
+    "babar": "^0.1.0",
+    "command-line-args": "^4.0.7",
+    "sqlite3": "^3.1.9"
+  }
+}
