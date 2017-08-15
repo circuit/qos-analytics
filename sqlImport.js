@@ -22,9 +22,64 @@
 
 /*jshint node:true */
 
-// usage: node sqlImport.js --file qos_items.json  or node.js  --file "`ls -m qos_items-day-by-day*.json`"
+// usage:
+//   node sqlImport.js --file qos_items.json  or node.js  --file "`ls -m qos_items-day-by-day*.json`"
+//   node sqlImport.js --help
 
 'use strict';
+
+const readline = require('readline');
+const commandLineArgs = require('command-line-args');
+const getUsage = require('command-line-usage');
+const sqlite3 = require('sqlite3').verbose();
+const { exec, spawn } = require('child_process');
+const sections = [
+  {
+    header: 'sqlImport',
+    content: 'Import QoS items into sqlite3. Use option [italic]{export} to save database into a file for offline processing.'
+  },
+  {
+    header: 'Options',
+    optionList: [
+      {
+        name: 'src',
+        typeLabel: '[underline]{file[s]}',
+        description: 'The QoS json input file. To import multiple files use: `ls -m qos*.json`.'
+      },
+      {
+        name: 'export',
+        typeLabel: '[underline]{file}',
+        description: 'Filename to export database.'
+      },
+      {
+        name: 'help',
+        description: 'Print this usage guide.'
+      }
+    ]
+  },
+  {
+    header: 'Synopsis',
+    content: [
+      '$ node sqlImport [bold]{--src} [underline]{file} [[bold]{--export} [underline]{file}]',
+      '$ node sqlImport [bold]{--help}'
+    ]
+  },
+  {
+    header: 'Examples',
+    content: [
+      {
+        desc: 'Import multiple files and export database.',
+        example: '$ node sqlImport --src "`ls -m qos-day-by-day*.json`" --export mydb.db'
+      },
+      {
+        desc: 'Import single file.',
+        example: '$ example --src qos-2017-08-10.json'
+      }
+    ]
+  },
+
+]
+
 
 /**
  * return a string with an SQL CREATE TABLE statement for the given object
@@ -257,7 +312,6 @@ function importQosFile(db, file) {
 function runCmdLine(db, options){
     console.log('... starting cmd line');
 
-    const readline = require('readline');
     const rl = readline.createInterface({
       input: process.stdin,
       output: process.stdout
@@ -334,24 +388,26 @@ function importRows(db){
 // console.log(createTableStatement('qos', record));
 // console.log(createInsertStatement('qos', record));
 
-const commandLineArgs = require('command-line-args');
 const optionDefinitions = [
-    { name: 'file', type: String }
-  ];
-
+    { name: 'src', alias: 's', type: String },
+    { name: 'export', alias: 'e', type: String },
+    { name: 'help', alias: 'h', type: Boolean }
+];
 const options = commandLineArgs(optionDefinitions);
-//console.log(options);
 
-let files = options.file.replace(/\s/g,'').split(',');
-//console.log(files);
+if (options.help || !options.src) {
+    console.log(getUsage(sections));
+    return;
+}
 
-var sqlite3 = require('sqlite3').verbose();
-var db = new sqlite3.Database(':memory:');
+let files = options.src.replace(/\s/g,'').split(',');
+let dbName = options.export || 'tmp.db';
+exec(`rm ${dbName}`, () => {
+    let db = new sqlite3.Database(dbName);
+    db.serialize();
+    createDbSchema(db)
+    .then(importRows)
+    .then(() => spawn('sqlite3', [dbName], { stdio: 'inherit', shell: true }))
+    .catch(console.error)
+});
 
-db.serialize();
-
-createDbSchema(db)
-.then(importRows)
-.then(runQueries)
-.then(runCmdLine)
-.catch(e => {console.error(e)});
