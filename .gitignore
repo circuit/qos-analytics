@@ -3,5 +3,7 @@
 !package.json
 output.csv
 data
+*.db
+.DS_Store
 .vscode
 node_modules

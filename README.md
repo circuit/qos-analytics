@@ -23,7 +23,18 @@ recurring for 2 consecutive collection periods of 30s each for mobile clients
 
 
 ### Sample queries
+
+// Overview of clients
+select DISTINCT osVersion, manufacturer, deviceType, hardwareModel, clientVersion, deviceSubtype, UD, NI from qos;
+
+// Browser versions
 select manufacturer, count(*) from qos where deviceType='WEB' group by manufacturer;
-select count(*) from qos where LA > 300;
+
+// Wired vs wireless
 select NI, count(*) from qos group by NI;
-select INFO AS 'INFO                       ', count(*) from qos group by INFO;
+
+//
+select clientVersion, count(*) from qos where deviceSubtype='DESKTOP_APP' group by clientVersion;
+
+select count(*) from qos where LA > 300;
+select INFO AS 'INFO                       ', count(*) from qos where INFO in 'CLIENT_ENDED:LOST_WEBSOCKET_CONNECTION' group by INFO;
