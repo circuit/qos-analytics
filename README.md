@@ -7,6 +7,9 @@ node  sqlImport.js  --db ./mydb.db --client ./data/client-qos.json --server ./da
 ```
 ### Sample queries
 https://sqlite.org/cli.html
-To display column attributes, enter .headers ON.
-To display rows in column style, enter .mode column.
-To run sample queries .read queries.sql
+
+To display column attributes, enter: .headers ON.
+
+To display rows in column style, enter: .mode column.
+
+To run sample queries enter: .read queries.sql
