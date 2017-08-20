@@ -1,6 +1,7 @@
 *.json
-!schema.json
-!package.json
+!qos-schema.json
+!session-schema.json
+!session-user-schema.json!package.json
 output.csv
 data
 *.db
