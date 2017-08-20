@@ -33,23 +33,42 @@ const commandLineArgs = require('command-line-args');
 const getUsage = require('command-line-usage');
 const sqlite3 = require('sqlite3').verbose();
 const { exec, spawn } = require('child_process');
+const fs = require('fs');
+
+/**
+ * Command line usage description
+  */
 const sections = [
   {
     header: 'sqlImport',
-    content: 'Import QoS items into sqlite3. Use option [italic]{export} to save database into a file for offline processing.'
+    content: 'Import QoS items or Sessions records  into and sqlite3 db file.'
   },
   {
     header: 'Options',
     optionList: [
       {
-        name: 'src',
+        name: 'client',
         typeLabel: '[underline]{file[s]}',
-        description: 'The QoS json input file. To import multiple files use: `ls -m qos*.json`.'
+        description: 'Client qos json files. To import multiple files use: `ls -m qos*.json`.'
       },
       {
-        name: 'export',
+        name: 'server',
+        typeLabel: '[underline]{file[s]}',
+        description: 'Server qos json files. To import multiple files use: `ls -m server-qos*.json`.'
+      },
+      {
+        name: 'session',
+        typeLabel: '[underline]{file[s]}',
+        description: 'Session record json files. To import multiple files use: `ls -m sessions*.json`.'
+      },
+      {
+        name: 'db',
         typeLabel: '[underline]{file}',
-        description: 'Filename to export database.'
+        description: 'The db file.'
+      },
+      {
+        name: 'clean',
+        description: 'Deletes the db content before importing data.'
       },
       {
         name: 'help',
@@ -60,7 +79,7 @@ const sections = [
   {
     header: 'Synopsis',
     content: [
-      '$ node sqlImport [bold]{--src} [underline]{file} [[bold]{--export} [underline]{file}]',
+      '$ node sqlImport [bold]{--client} [underline]{file}  [[bold]{--server} [underline]{file}]  [[bold]{--session} [underline]{file}]   [[bold]{--db} [underline]{file}] [[bold]{--clean}]',
       '$ node sqlImport [bold]{--help}'
     ]
   },
@@ -68,18 +87,16 @@ const sections = [
     header: 'Examples',
     content: [
       {
-        desc: 'Import multiple files and export database.',
-        example: '$ node sqlImport --src "`ls -m qos-day-by-day*.json`" --export mydb.db'
+        desc: 'Import multiple client qos files to mydb.db.',
+        example: '$ node sqlImport --client "`ls -m qos-day-by-day*.json`" --db mydb.db'
       },
       {
         desc: 'Import single file.',
-        example: '$ example --src qos-2017-08-10.json'
+        example: '$ example --client qos-2017-08-10.json'
       }
     ]
   },
-
-]
-
+];
 
 /**
  * return a string with an SQL CREATE TABLE statement for the given object
@@ -87,7 +104,7 @@ const sections = [
  * @param {Object} schema - the object for which the table should be created. No columns will be created for properties with null values.
  */
 function createTableStatement(name, schema) {
-    let stmt = `CREATE TABLE ${name} ( \n`;
+    let stmt = `CREATE TABLE IF NOT EXISTS ${name} ( \n`;
     stmt += getColumnsNames(schema);
     stmt += ');';
     return stmt;
@@ -130,13 +147,13 @@ function getColumnsNames(schema, type = true, prefix = '') {
 
 /**
  * return a string with an SQL CREATE TABLE statement for the given object
- * @param {string} name - the name of the table
+ * @param {string} tableName - the tableName of the table
  * @param {Object} record - the object for which the table should be created. No columns will be created for properties with null values.
  */
-function createInsertStatement(name, record) {
-    insertDerivedProperties(record);
+function createInsertStatement(tableName, record) {
+    insertDerivedProperties(tableName, record);
     let namesAndValues = getColumnsNamesAndValues(record);
-    let stmt = `INSERT INTO ${name} ( \n`;
+    let stmt = `INSERT INTO ${tableName} ( \n`;
     stmt += namesAndValues.names;
     stmt += ') VALUES (\n';
     stmt += namesAndValues.values;
@@ -160,7 +177,7 @@ function getColumnsNamesAndValues(record,  prefix = '') {
                     continue;
                 }
                 let namesAndValues = getColumnsNamesAndValues(record[prop],  prop );
-                if (namesAndValues.names === ''){
+                if (namesAndValues.names === '') {
                     continue;
                 }
                 names += ((names === '') ?'' : ',\n') + namesAndValues.names;
@@ -171,7 +188,7 @@ function getColumnsNamesAndValues(record,  prefix = '') {
             default:
                 let value = getSqlValue(record[prop]);
                 if (value === null){
-                    console.log(value,prop, record[prop]);
+                    //console.log(value,prop, record[prop]);
                     continue;
                 }
                 names += ((names === '') ? '' : ',\n' ) + `\`${prop}\``;                // skip the prefix ${prefix}_ as long as there are no clashed
@@ -186,10 +203,13 @@ function getColumnsNamesAndValues(record,  prefix = '') {
  * add computed properties to the record
  * @param  value - the value to be converted to sql representation
  */
-function insertDerivedProperties(record) {
+function insertDerivedProperties(tableName, record) {
+    if ( tableName  === ' session' || tableName === 'session_user' )  {
+        return;
+    }
     record.derived = {};
-    record.derived.p_loss_rcvd = (record.qosItems.PLL && record.qosItems.PR && record.qosItems.PR > 0) ? record.qosItems.PLL/record.qosItems.PR : null;
-    record.derived.p_loss_sent = (record.qosItems.PLR && record.qosItems.PS && record.qosItems.PS > 0) ? record.qosItems.PLR/record.qosItems.PS : null;
+    record.derived.p_loss_rcvd = (record.qosItems && record.qosItems.PLL && record.qosItems.PR && record.qosItems.PR > 0) ? record.qosItems.PLL/record.qosItems.PR : null;
+    record.derived.p_loss_sent = (record.qosItems && record.qosItems.PLR && record.qosItems.PS && record.qosItems.PS > 0) ? record.qosItems.PLR/record.qosItems.PS : null;
 };
 
 /**
@@ -239,175 +259,168 @@ function jsToSqlType(value){
 }
 
 /**
- * run db queries
- * @param {Object} db - db to run the queries against
- */
-function runQueries(db) {
-    console.log('... running queries');
-
-    let queries = [
-        "SELECT COUNT() FROM qos",
-        "SELECT COUNT(DISTINCT rtcInstanceId) FROM qos",
-        "SELECT COUNT(DISTINCT rtcSessionId) FROM qos",
-        "SELECT COUNT(DISTINCT userId) FROM qos",
-        "SELECT INFO, COUNT(*) from qos GROUP BY INFO",
-        "SELECT COUNT(*) FROM qos WHERE (`OR` > 0)",
-        "SELECT COUNT(*) FROM qos WHERE (OS > 0)",
-        "SELECT COUNT(*) FROM qos WHERE (MT = 'audio') AND (`OR` > 0)",
-        "SELECT COUNT(*) FROM qos WHERE (MT = 'screen share')  AND (`OR` > 0)",
-        "SELECT COUNT(*) FROM qos WHERE (MT = 'video')  AND (`OR` > 0)"
-    ];
-
-    let tasks = [];
-
-    queries.forEach(query => {
-        tasks.push(new Promise((resolve,reject) => {
-            db.all(query, function(err, rows) {
-                console.log(query,'\n,', rows,'\n\n');
-                resolve();
-            });
-        }));
-    });
-
-    return new Promise((resolve, reject) => {
-        Promise.all(tasks).then(_ => resolve(db));
-    });
-}
-
-/**
  * import a file with qos items
  * @param {string} file - path to file (including file name)
+ * @param {string} type - type of items: client or server
  */
-function importQosFile(db, file) {
-    return new Promise((resolve,reject)=>{
-        let qosItems = require(file);
-        let rowCounter = 0;
-
-        if (qosItems.hits.total === 0){
-            console.log(`imported ${file} with ${rowCounter} records`);
-            resolve(db);
-        }
-
-        qosItems.hits.hits.forEach( item => {
-            let stmt = createInsertStatement('qos', item._source);
-            db.run(stmt,(e) => {
-                rowCounter++;
-                if (e) {
-                    console.error( item._source, stmt, e);
-                    process.exit(1);
-                }
-                if (rowCounter === qosItems.hits.hits.length) {
-                    console.log(`imported ${file} with ${rowCounter} records`);
-                    resolve(db);
-                }
-            });
-        });
+function importQosFile(file, type) {
+    let qosItems = require(file);
+    let tasks = [];
+    qosItems.hits.hits.forEach( item => {
+        tasks.push(dbRun(createInsertStatement(type, item._source)));
     });
+    console.log(`importing ${file} with ${qosItems.hits.hits.length} records, created ${tasks.length} tasks`);
+    return Promise.all(tasks);
 }
 
 /**
- * run cmd line
- * @param {object} options
+ * import a file with session records
+ * @param {string} file - path to file (including file name)
  */
-function runCmdLine(db, options){
-    console.log('... starting cmd line');
+function importSessionFile(file) {
+    let sessionRecords = require(file);
+    let tasks = [];
 
-    const rl = readline.createInterface({
-      input: process.stdin,
-      output: process.stdout
-    });
+    sessionRecords.hits.hits.forEach( item => {
 
-    rl.setPrompt('sql> ');
-    rl.prompt();
-
-    rl.on('line', cmd => {
-        //console.log(cmd);
-        if (cmd === 'bye' || cmd === 'quit' || cmd === ' exit'){
-            rl.close();
-            return;
-        }
-
-        if (!cmd) {
-            rl.prompt();
-            return;
-        }
-
-        db.all(cmd, (err, rows) => {
-            if (err) {
-                console.log(err);
-            }
-            console.log(rows);
-            console.log('\n');
-            rl.prompt();
+        let sessionRecord = item._source;
+        sessionRecord.userStatList.forEach( user => {
+            delete user.audioTimes;  // remove data that goes into the session record
+            delete user.videoTimes;
+            delete user.screenTimes;
+            user.tenantId = item.tenantId;
+            user.sessionId = item.sessionId;
+            user.sessionInstanceId = item.sessionInstanceId;
+            tasks.push(dbRun(createInsertStatement('session_user', user )));
         });
+
+        delete sessionRecord.userStatList; // remove the data that went into the user records
+        tasks.push(dbRun(createInsertStatement('session', sessionRecord)));
     });
 
-    rl.on('close', () => {
-        console.log('terminating ...');
-        process.exit(0);
-    });
+    console.log(`importing ${file} with ${sessionRecords.hits.hits.length} records, created ${tasks.length} tasks`);
+    return Promise.all(tasks);
 }
 
 /**
- * create db schema
- * @param {object} options
+ * Promise warpper for executing an SQL statement 
+ * @param {string} statement
  */
-function createDbSchema(db) {
+function dbRun(stmt) {
     return new Promise((resolve,reject) => {
-        let schema = require('./schema.json');
-        let stmt = createTableStatement('qos', schema);
-        //console.log(stmt);
         db.run(stmt, e => {
             if (e) {
                 console.error(e);
                 reject(e);
                 return;
             }
-            resolve(db);
+            resolve();
+            return;
         });
-    });
+    })
 }
 
 /**
- * import rows
+ * create db schema
  * @param {object} options
  */
-function importRows(db){
-    console.log('... importing rows');
+function createDbSchema() {
+    console.log('... creating the db schema');
+    
     let tasks = [];
-    files.forEach(file =>{
-        tasks.push(importQosFile(db, `./${file}`));
-    });
-    return new Promise((resolve,reject) => {
-        Promise.all(tasks).then(_ => {
-            resolve(db);
-        })
-    });
-};
 
-// console.log(createTableStatement('qos', record));
-// console.log(createInsertStatement('qos', record));
+    if (clientFiles) {
+        let schema = require('./qos-schema.json');
+        let stmt = createTableStatement('client', schema);
+        //console.log(stmt);
+        tasks.push(dbRun(stmt));
+    }
 
-const optionDefinitions = [
-    { name: 'src', alias: 's', type: String },
-    { name: 'export', alias: 'e', type: String },
+    if (serverFiles) {
+        let schema = require('./qos-schema.json');
+        let stmt = createTableStatement('server', schema);
+        //console.log(stmt);
+        tasks.push(dbRun(stmt));
+    }
+
+    if (sessionFiles) {
+        let schema = require('./session-schema.json');
+        let stmt = createTableStatement('session', schema);
+        //console.log(stmt);
+        tasks.push(dbRun(stmt));
+        
+        schema = require('./session-user-schema.json');
+        stmt = createTableStatement('session_user', schema);
+        //console.log(stmt);
+        tasks.push(dbRun(stmt));
+    }
+
+    return Promise.all(tasks);
+}
+
+/**
+ * import rows from the  provided files
+ */
+function importRows() {
+    console.log('... importing rows');
+
+    let tasks = [];
+
+    if (clientFiles) {
+        clientFiles.forEach(file =>{
+                tasks.push(importQosFile(`./${file}`,'client'));
+        });
+    }
+
+    if (serverFiles) {
+        serverFiles.forEach(file =>{
+            tasks.push(importQosFile(`./${file}`,'server'));
+        });
+    }
+
+    if (sessionFiles) {
+        sessionFiles.forEach(file =>{
+            tasks.push(importSessionFile(`./${file}`));
+        });
+    }
+
+   return Promise.all(tasks);
+}
+
+/**
+ * main
+ */
+const argsDefinition = [
+    { name: 'client', alias: 'c', type: String },
+    { name: 'server', alias: 's', type: String },
+    { name: 'session', alias: 'S', type: String },
+    { name: 'db', alias: 'd', type: String },
+    { name: 'clean', alias: 'C', type: Boolean },
     { name: 'help', alias: 'h', type: Boolean }
 ];
-const options = commandLineArgs(optionDefinitions);
+const args = commandLineArgs(argsDefinition);
 
-if (options.help || !options.src) {
+console.log(args);
+
+if (args.help || !(args.client || args.server || args.session)) {
     console.log(getUsage(sections));
     return;
 }
 
-let files = options.src.replace(/\s/g,'').split(',');
-let dbName = options.export || 'tmp.db';
-exec(`rm ${dbName}`, () => {
-    let db = new sqlite3.Database(dbName);
-    db.serialize();
-    createDbSchema(db)
-    .then(importRows)
-    .then(() => spawn('sqlite3', [dbName], { stdio: 'inherit', shell: true }))
-    .catch(console.error)
-});
+//globals
+let clientFiles = (args.client) ? args.client.replace(/\s/g,'').split(',') : null;
+let serverFiles = (args.server) ? args.server.replace(/\s/g,'').split(',') : null;
+let sessionFiles = (args.session) ? args.session.replace(/\s/g,'').split(',') : null;
+let dbName = args.db || './tmp.db';                
+
+if (args.clean){
+    fs.unlinkSync(dbName);
+}
+
+let db = new sqlite3.Database(dbName); 
+
+createDbSchema()
+.then(importRows)
+.then(() => spawn('sqlite3', [dbName], { stdio: 'inherit', shell: true }))
+.catch(console.error);        
 
