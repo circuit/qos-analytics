@@ -6,10 +6,8 @@
 node  sqlImport.js  --db ./mydb.db --client ./data/client-qos.json --server ./data/server-qos.json --session ./data/cha/sessions.json --clean
 ```
 ### Sample queries
-https://sqlite.org/cli.html
+On the cli (https://sqlite.org/cli.html) enter:
 
-To display column attributes, enter: .headers ON.
-
-To display rows in column style, enter: .mode column.
-
-To run sample queries enter: .read queries.sql
+```bash
+.read queries.sql
+```
