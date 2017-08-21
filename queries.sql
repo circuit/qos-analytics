@@ -1,5 +1,5 @@
 
--- from bash with sqlite3 file.db < queries.sql 
+-- from bash with sqlite3 file.db < queries.sql
 -- from sqlite3 cli with .read queries.sql
 
 .echo on
@@ -9,11 +9,11 @@
 -----------------------------------------------------------
 -- record counts
 -----------------------------------------------------------
-SELECT COUNT() FROM client; 
+SELECT COUNT() FROM client;
 
-SELECT COUNT() FROM server; 
+SELECT COUNT() FROM server;
 
-SELECT COUNT() FROM session; 
+SELECT COUNT() FROM session;
 
 SELECT COUNT(*) FROM session_user;
 
@@ -121,7 +121,7 @@ select min(JI),max(JI),avg(JI) from client where MT='audio' and `OS` >0 and `OR`
 
 select min(PLLP),max(PLLP),avg(PLLP) from client where MT='audio' and `OS` >0 and `OR` >0 and duration > 10000;
 
- select min(PLRP),max(PLRP),avg(PLRP) from client where MT='audio' and `OS` >0 and `OR` >0 and duration > 10000;
+select min(PLRP),max(PLRP),avg(PLRP) from client where MT='audio' and `OS` >0 and `OR` >0 and duration > 10000;
 
 select min(LA),max(LA),avg(LA) from client where MT='audio' and `OS` >0 and `OR` >0 and duration > 10000;
 
@@ -136,15 +136,15 @@ select count(*), count(*)/cast ((select count(*) from client where  MT = 'audio'
 
 select count(*), count(*)/cast ((select count(*) from client where  MT = 'audio' and PR > 0 and duration > 10000) as float) as `Client PLLR > 5%`  from client where PLRP > 0.05 and MT = 'audio' and PR > 0 and duration > 10000;
 
-select count(*), count(*)/cast ((select count(*) from server where  MT = 'audio' and PR > 0 and duration > 10000) as float) as `Server PLLR > 5%`  from server where PLLP > 0.05 and MT = 'audio' and PR > 0 and duration > 10000;
+select count(*), count(*)/cast ((select count(*) from server where  MT = 'audio' and PR > 0 and duration > 10000) as float) as `Server PLLP > 5%`  from server where PLLP > 0.05 and MT = 'audio' and PR > 0 and duration > 10000;
 
 select count(*), count(*)/cast ((select count(*) from server where  MT = 'audio' and PR > 0 and duration > 10000) as float) as `Server PLLR > 5%`  from server where PLRP > 0.05 and MT = 'audio' and PR > 0 and duration > 10000;
 
 -----------------------------------------------------------
 -- client records with PL > 5% or LA > 150 ms or JI > 30ms
 -----------------------------------------------------------
-select count(*), count(*)/cast ((select count(*)  from client where  MT = 'audio' and PR > 0 and duration > 10000) as float) 
-as `client PL > 5% or LA > 150 ms or JI > 30ms` from client 
+select count(*), count(*)/cast ((select count(*)  from client where  MT = 'audio' and PR > 0 and duration > 10000) as float)
+as `client PL > 5% or LA > 150 ms or JI > 30ms` from client
 where (PLRP > 0.05 or PLLP > 0.05 or LA > 150 or JI > 30)and MT = 'audio' and PR > 0 and duration > 10000;
 
 -----------------------------------------------------------
