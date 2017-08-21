@@ -3,7 +3,7 @@
 !session-schema.json
 !session-user-schema.json
 !package.json
-output.csv
+*.csv
 data
 *.db
 .DS_Store

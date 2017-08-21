@@ -21,11 +21,6 @@
 */
 
 /*jshint node:true */
-
-// usage:
-//   node sqlImport.js --file qos_items.json  or node.js  --file "`ls -m qos_items-day-by-day*.json`"
-//   node sqlImport.js --help
-
 'use strict';
 
 const readline = require('readline');
@@ -288,9 +283,9 @@ function importSessionFile(file) {
             delete user.audioTimes;  // remove data that goes into the session record
             delete user.videoTimes;
             delete user.screenTimes;
-            user.tenantId = item.tenantId;
-            user.sessionId = item.sessionId;
-            user.sessionInstanceId = item.sessionInstanceId;
+            user.tenantId = sessionRecord.tenantId;
+            user.sessionId = sessionRecord.sessionId;
+            user.sessionInstanceId = sessionRecord.sessionInstanceId;
             tasks.push(dbRun(createInsertStatement('session_user', user )));
         });
 
