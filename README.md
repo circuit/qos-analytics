@@ -10,3 +10,8 @@ On the cli (https://sqlite.org/cli.html) enter:
 ```bash
 .read queries.sql
 ```
+
+### Import media server log from load test tool
+```bash
+node sqlImport.js --loadtest ./data/mediaserver.log --db loadtest.db
+```
