@@ -57,6 +57,11 @@ const sections = [
         description: 'Session record json files. To import multiple files use: `ls -m sessions*.json`.'
       },
       {
+        name: 'loadtest',
+        typeLabel: '[underline]{file[s]}',
+        description: 'Loadtest log files. To import multiple files use: `ls -m media*.log`.'
+      },
+      {
         name: 'db',
         typeLabel: '[underline]{file}',
         description: 'The db file.'
@@ -298,7 +303,39 @@ function importSessionFile(file) {
 }
 
 /**
- * Promise warpper for executing an SQL statement 
+ * import a loadtest log file
+ * @param {string} file - path to file (including file name)
+ */
+function importLoadtestFile(file) {
+    let userMediaEntries = {};
+    var str = fs.readFileSync(file, 'utf8');
+    var lines = str.match(/[^\r\n]+/g);
+    lines.forEach(line => {
+        var found = line.match(/.*UserId (.*): (audio|video).*receiveStreamStatistic: get(.*): (.*)/i);
+        if (found && found.length >= 5) {
+            let key = `${found[1]}|${found[2]}`;
+            if (!userMediaEntries[key]) {
+                userMediaEntries[key] = {
+                    userId: found[1],
+                    media: found[2]
+                };
+            }
+            userMediaEntries[key][found[3]] = found[4];
+        }
+    });
+
+    let tasks = [];
+    Object.keys(userMediaEntries).forEach(key => {
+        let obj = userMediaEntries[key];
+        tasks.push(dbRun(createInsertStatement('loadtest', obj)));
+    });
+
+    console.log(`importing ${file} with ${userMediaEntries.length} records, created ${userMediaEntries.length} tasks`);
+    return Promise.all(tasks);
+}
+
+/**
+ * Promise warpper for executing an SQL statement
  * @param {string} statement
  */
 function dbRun(stmt) {
@@ -321,7 +358,7 @@ function dbRun(stmt) {
  */
 function createDbSchema() {
     console.log('... creating the db schema');
-    
+
     let tasks = [];
 
     if (clientFiles) {
@@ -343,9 +380,16 @@ function createDbSchema() {
         let stmt = createTableStatement('session', schema);
         //console.log(stmt);
         tasks.push(dbRun(stmt));
-        
+
         schema = require('./session-user-schema.json');
         stmt = createTableStatement('session_user', schema);
+        //console.log(stmt);
+        tasks.push(dbRun(stmt));
+    }
+
+    if (loadtestFiles) {
+        let schema = require('./loadtest-schema.json');
+        let stmt = createTableStatement('loadtest', schema);
         //console.log(stmt);
         tasks.push(dbRun(stmt));
     }
@@ -361,25 +405,12 @@ function importRows() {
 
     let tasks = [];
 
-    if (clientFiles) {
-        clientFiles.forEach(file =>{
-                tasks.push(importQosFile(`./${file}`,'client'));
-        });
-    }
+    clientFiles && clientFiles.forEach(file => tasks.push(importQosFile(`./${file}`,'client')));
+    serverFiles && serverFiles.forEach(file => tasks.push(importQosFile(`./${file}`,'server')));
+    sessionFiles && sessionFiles.forEach(file => tasks.push(importSessionFile(`./${file}`)));
+    loadtestFiles && loadtestFiles.forEach(file => tasks.push(importLoadtestFile(`./${file}`)));
 
-    if (serverFiles) {
-        serverFiles.forEach(file =>{
-            tasks.push(importQosFile(`./${file}`,'server'));
-        });
-    }
-
-    if (sessionFiles) {
-        sessionFiles.forEach(file =>{
-            tasks.push(importSessionFile(`./${file}`));
-        });
-    }
-
-   return Promise.all(tasks);
+    return Promise.all(tasks);
 }
 
 /**
@@ -389,6 +420,7 @@ const argsDefinition = [
     { name: 'client', alias: 'c', type: String },
     { name: 'server', alias: 's', type: String },
     { name: 'session', alias: 'S', type: String },
+    { name: 'loadtest', alias: 'l', type: String },
     { name: 'db', alias: 'd', type: String },
     { name: 'clean', alias: 'C', type: Boolean },
     { name: 'help', alias: 'h', type: Boolean }
@@ -397,7 +429,7 @@ const args = commandLineArgs(argsDefinition);
 
 console.log(args);
 
-if (args.help || !(args.client || args.server || args.session)) {
+if (args.help || !(args.client || args.server || args.session || args.loadtest)) {
     console.log(getUsage(sections));
     return;
 }
@@ -406,16 +438,17 @@ if (args.help || !(args.client || args.server || args.session)) {
 let clientFiles = (args.client) ? args.client.replace(/\s/g,'').split(',') : null;
 let serverFiles = (args.server) ? args.server.replace(/\s/g,'').split(',') : null;
 let sessionFiles = (args.session) ? args.session.replace(/\s/g,'').split(',') : null;
-let dbName = args.db || './tmp.db';                
+let loadtestFiles = (args.loadtest) ? args.loadtest.replace(/\s/g,'').split(',') : null;
+let dbName = args.db || './tmp.db';
 
-if (args.clean){
+if (args.clean) {
     fs.unlinkSync(dbName);
 }
 
-let db = new sqlite3.Database(dbName); 
+let db = new sqlite3.Database(dbName);
 
 createDbSchema()
 .then(importRows)
 .then(() => spawn('sqlite3', [dbName], { stdio: 'inherit', shell: true }))
-.catch(console.error);        
+.catch(console.error);
 
