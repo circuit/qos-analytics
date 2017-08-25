@@ -212,6 +212,10 @@ function insertDerivedProperties(tableName, record) {
     record.derived.p_loss_sent = (record.qosItems && record.qosItems.PLR && record.qosItems.PS && record.qosItems.PS > 0) ? record.qosItems.PLR/record.qosItems.PS : null;
 };
 
+function removeQuotes(str){
+    return str.replace(/'/g, "&#39;").replace(/"/g,"&quot;");
+}
+
 /**
  * return  value for an sql insert statement
  * @param  value - the value to be converted to sql representation
@@ -221,7 +225,7 @@ function getSqlValue(value) {
         case 'NUMERIC':
             return (value) ? 1 : 0;
         case 'TEXT':
-            return `'${value}'`;
+            return `'${removeQuotes(value)}'`;
         case null:
            return null;
         default:
@@ -281,7 +285,7 @@ function importSessionFile(file) {
     let sessionRecords = require(file);
     let tasks = [];
 
-    sessionRecords.hits.hits.forEach( item => {
+    sessionRecords.hits.hits.forEach(item => {
 
         let sessionRecord = item._source;
         sessionRecord.userStatList.forEach( user => {
@@ -291,7 +295,7 @@ function importSessionFile(file) {
             user.tenantId = sessionRecord.tenantId;
             user.sessionId = sessionRecord.sessionId;
             user.sessionInstanceId = sessionRecord.sessionInstanceId;
-            tasks.push(dbRun(createInsertStatement('session_user', user )));
+            tasks.push(dbRun(createInsertStatement('session_user', user)));
         });
 
         delete sessionRecord.userStatList; // remove the data that went into the user records

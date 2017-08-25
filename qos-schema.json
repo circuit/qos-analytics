@@ -48,6 +48,7 @@
           "IPL" : "string",
           "iplRegion" : "string",
           "SADDR" : "string",
+          "TURN_TT": "string",
           "RCT" : "string",
           "MT" : "string",
           "UD" : "string",
